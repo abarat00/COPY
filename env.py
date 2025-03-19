@@ -1,18 +1,14 @@
 import numpy as np
-
-# local imports
+import json
 from utils import build_ou_process
-
 
 class Environment:
     """
-    The environment consists of the following:
-        - state  : (current_position, next_signal)
-        - action : next_position.
-        - reward : it depends on our model.
-    The signal is built as an OU process.
+    L'ambiente rappresenta il problema di ottimizzazione del portafoglio.
+    Lo stato è costituito dalle feature già normalizzate (disponibili in self.raw_state)
+    riordinate secondo l'ordine definito in self.norm_columns, concatenate con la
+    posizione corrente (pi). Il segnale viene generato tramite un processo di Ornstein-Uhlenbeck.
     """
-
     def __init__(
         self,
         sigma=0.5,
@@ -32,60 +28,9 @@ class Environment:
         noise_std=10,
         noise_seed=None,
         scale_reward=10,
+        norm_params_path=None,   # Percorso al file JSON con i parametri Min-Max
+        norm_columns=None        # Lista delle colonne (feature) da utilizzare, in ordine
     ):
-        """
-        Description
-        ---------------
-        Constructor of class Environment.
-
-        Parameters & Attributes
-        ---------------
-        sigma          : Float, parameter of price predictor signal
-                         p_t - p_{t-1} = -theta*p_{t-1} + sigma*epsilon_t; (epsilon_t)_t
-                         are standard normal random variables
-        theta          : Float, parameter of price predictor signal
-                         p_t - p_{t-1} = -theta*p_{t-1} + sigma*epsilon_t; (epsilon_t)_t
-                         are standard normal random variables
-        T              : Float, time horizon.
-        random_state   : Int or None:
-                         - if None, do not use a random state (useful to simulate
-                           different paths each time running the simulation).
-                         - if Int, use a random state (useful to compare different
-                           experimental results).
-        lambd          : Float, penalty term of the position in the reward function.
-        psi            : Float, penalty term of the trade magnitude in the reward
-                         function.
-        cost           : String in ['trade_0', 'trade_l1', 'trade_l2']
-                          - 'trade_0'  : no trading cost.
-                          - 'trade_l1' : squared trading cost.
-                          - 'trade_l2' : linear trading cost.
-        max_pos        : Float > 0, maximum allowed position.
-        squared_risk   : Boolean, whether to use the squared risk term or not.
-        penalty        : String in ['none', 'constant', 'tanh', 'exp'], the type of
-                         penalty to add to penalize positions beyond maxpos.
-                         (It is advised to use a tanh penalty in the maxpos setting).
-        alpha          : Int, a parameter of the penalty function.
-        beta           : Int, a parameter of the penalty function.
-        clip           : Boolean, whether to clip positions beyond maxpos or not.
-        noise          : Boolean, whether to consider noisy returns or returns equal to
-                         predictor values.
-        noise_std      : Float, standard deviation of the noise added to the returns.
-        noise_seed     : Int, see used to produce the additive noise of the returns.
-        scale_reward   : Float>0, parameter that scales the rewards.
-        signal         : 1D np.array of shape (T,) containing the sampled OU process.
-        it             : Int, the current time iteration.
-        pi             : Float, the current position.
-        p              : Float, the next value of the signal.
-        state          : 2-tuple, the current state: (p, pi).
-        done           : Boolean, whether the episode is over or not. Initialized to
-                         False.
-        state_size     : Int, state size.
-        action_size    : Int, action size.
-
-        Returns
-        ---------------
-        """
-
         self.sigma = sigma
         self.theta = theta
         self.T = T
@@ -96,12 +41,11 @@ class Environment:
         self.squared_risk = squared_risk
         self.random_state = random_state
         self.signal = build_ou_process(T, sigma, theta, random_state)
-        self.it = 0  # First iteration is 0
+        self.it = 0
         self.pi = 0
         self.p = self.signal[self.it + 1]
-        self.state = (self.p, self.pi)
+        self.state = (self.p, self.pi)  # Stato "base" (vecchio formato)
         self.done = False
-        self.state_size = len(self.state)
         self.action_size = 1
         self.penalty = penalty
         self.alpha = alpha
@@ -114,33 +58,61 @@ class Environment:
         if noise:
             if noise_seed is None:
                 self.noise_array = np.random.normal(0, noise_std, T)
-
             else:
                 rng = np.random.RandomState(noise_seed)
                 self.noise_array = rng.normal(0, noise_std, T)
 
+        # Carica i parametri di normalizzazione, se fornito
+        if norm_params_path is not None:
+            with open(norm_params_path, 'r') as f:
+                self.norm_params = json.load(f)
+        else:
+            self.norm_params = None
+
+        # Definisci l'ordine esatto delle feature da utilizzare.
+        if norm_columns is not None:
+            self.norm_columns = norm_columns
+        else:
+            # Esempio: le 64 feature da utilizzare
+            self.norm_columns = [
+                "open", "volume", "change", "day", "week", "adjCloseGold", "adjCloseSpy",
+                "Credit_Spread", "Log_Close", "m_plus", "m_minus", "drawdown", "drawup",
+                "s_plus", "s_minus", "upper_bound", "lower_bound", "avg_duration", "avg_depth",
+                "cdar_95", "VIX_Close", "MACD", "MACD_Signal", "MACD_Histogram", "SMA5",
+                "SMA10", "SMA15", "SMA20", "SMA25", "SMA30", "SMA36", "RSI5", "RSI14", "RSI20",
+                "RSI25", "ADX5", "ADX10", "ADX15", "ADX20", "ADX25", "ADX30", "ADX35",
+                "BollingerLower", "BollingerUpper", "WR5", "WR14", "WR20", "WR25",
+                "SMA5_SMA20", "SMA5_SMA36", "SMA20_SMA36", "SMA5_Above_SMA20",
+                "Golden_Cross", "Death_Cross", "BB_Position", "BB_Width",
+                "BB_Upper_Distance", "BB_Lower_Distance", "Volume_SMA20", "Volume_Change_Pct",
+                "Volume_1d_Change_Pct", "Volume_Spike", "Volume_Collapse", "GARCH_Vol",
+                "pred_lstm", "pred_gru", "pred_blstm", "pred_lstm_direction",
+                "pred_gru_direction", "pred_blstm_direction"
+            ]
+        # La dimensione dello stato è il numero di feature + 1 (per la posizione)
+        self.state_size = len(self.norm_columns) + 1
+
+        # Inizializza raw_state come dizionario con chiavi definite da norm_columns.
+        # Questo verrà aggiornato ad ogni step con i dati correnti (già normalizzati)
+        self.raw_state = {col: 0.0 for col in self.norm_columns}
+
+    def update_raw_state(self, df, current_index):
+        """
+        Aggiorna self.raw_state leggendo la riga corrente dal DataFrame df.
+        Il DataFrame df deve contenere le colonne definite in self.norm_columns.
+        """
+        row = df.iloc[current_index].to_dict()
+        missing = [col for col in self.norm_columns if col not in row]
+        if missing:
+            raise ValueError(f"Mancano le seguenti colonne nel DataFrame: {missing}")
+        self.raw_state = row
+
     def reset(self, random_state=None, noise_seed=None):
         """
-        Description
-        ---------------
-        Reset the environment to run a new episode.
-
-        Parameters
-        ---------------
-        random_state : Int or None:
-            - if None, do not use a random state (useful to simulate different paths each
-              time running the simulation).
-            - if Int, use a random state (useful to compare different experimental
-              results).
-        noise_seed   : Same as random_state but for the noisy returns instead of the
-                       predictor signal.
-
-        Returns
-        ---------------
+        Resetta l'ambiente per iniziare un nuovo episodio.
         """
-
         self.signal = build_ou_process(self.T, self.sigma, self.theta, random_state)
-        self.it = 0  # First iteration is 0
+        self.it = 0
         self.pi = 0
         self.p = self.signal[self.it + 1]
         self.state = (self.p, self.pi)
@@ -148,122 +120,117 @@ class Environment:
         if self.noise:
             if noise_seed is None:
                 self.noise_array = np.random.normal(0, self.noise_std, self.T)
-
             else:
                 rng = np.random.RandomState(noise_seed)
                 self.noise_array = rng.normal(0, self.noise_std, self.T)
+        # Aggiorna raw_state per il nuovo episodio
+        # Ad esempio, se hai un DataFrame normalizzato 'df' e un indice corrente '0':
+        # self.update_raw_state(df, current_index=0)
+        return self.get_state()
+
+    def update_raw_state(self, df, current_index):
+        """
+        Aggiorna self.raw_state leggendo la riga corrente (current_index) dal DataFrame df.
+        Il DataFrame df deve contenere le colonne indicate in self.norm_columns.
+        """
+        # Estrae la riga come dizionario; questo garantisce che l'ordine non importi
+        row = df.iloc[current_index].to_dict()
+        # Verifica che tutte le colonne attese siano presenti
+        missing = [col for col in self.norm_columns if col not in row]
+        if missing:
+            raise ValueError(f"Mancano le seguenti colonne nel DataFrame: {missing}")
+        self.raw_state = row
 
     def get_state(self):
         """
-        Description
-        ---------------
-        Get the current state of the environment.
+        Restituisce lo stato corrente come un vettore ottenuto concatenando le feature
+        (estratte da self.raw_state in base a self.norm_columns) e la posizione corrente (pi).
 
-        Parameters
-        ---------------
+        Questo metodo riordina automaticamente le feature secondo self.norm_columns,
+        garantendo che il vettore di stato sia conforme a quello che il modello si aspetta.
 
-        Returns
-        ---------------
-        2-tuple representing the current state.
+        Ritorna:
+            Un array NumPy di dimensione (state_size,).
         """
+        # Assicura che tutte le chiavi attese siano presenti in raw_state
+        missing_cols = [col for col in self.norm_columns if col not in self.raw_state]
+        if missing_cols:
+            raise ValueError(f"Mancano le seguenti colonne in raw_state: {missing_cols}")
 
-        return self.state
+        ordered_features = [self.raw_state[col] for col in self.norm_columns]
+        ordered_features.append(self.pi)
+        return np.array(ordered_features)
 
     def step(self, action):
         """
-        Description
-        ---------------
-        Aplly action to the environment to modify the state of the agent and get the
-        corresponding reward.
+        Applica l'azione all'ambiente, aggiornando la posizione, il segnale e calcolando la ricompensa.
 
-        Parameters
-        ---------------
-        action : Float, the action to perform (next trade to make).
+        Parameters:
+            action : Float, variazione della posizione (trade).
 
-        Returns
-        ---------------
-        Float, the reward we get by applying action to the current state.
+        Returns:
+            Float, la ricompensa ottenuta.
         """
-
-        assert not self.done, (
-            "The episode is over, you cannot take another step! "
-            "Please reset the environment."
-        )
+        assert not self.done, "L'episodio è terminato. Resetta l'ambiente prima di procedere."
         pi_next_unclipped = self.pi + action
         if self.clip:
-            # Clip the next position between -max_pos and max_pos
             pi_next = np.clip(self.pi + action, -self.max_pos, self.max_pos)
-
         else:
             pi_next = self.pi + action
 
+        # Calcola la penalità
         if self.penalty == "none":
             pen = 0
-
-        if self.penalty == "constant":
+        elif self.penalty == "constant":
             pen = self.alpha * max(
                 0,
                 (self.max_pos - pi_next) / abs(self.max_pos - pi_next),
                 (-self.max_pos - pi_next) / abs(-self.max_pos - pi_next),
             )
-
         elif self.penalty == "tanh":
-            pen = self.beta * (
-                np.tanh(self.alpha * (abs(pi_next_unclipped) - 5 * self.max_pos / 4))
-                + 1
-            )
-
+            pen = self.beta * (np.tanh(self.alpha * (abs(pi_next_unclipped) - 5 * self.max_pos / 4)) + 1)
         elif self.penalty == "exp":
             pen = self.beta * np.exp(self.alpha * (abs(pi_next) - self.max_pos))
 
+        # Calcola la ricompensa in base al modello di costo
         if self.cost == "trade_0":
-            reward = (
-                self.p * pi_next - self.lambd * pi_next ** 2 * self.squared_risk - pen
-            ) / self.scale_reward
-
+            reward = (self.p * pi_next - self.lambd * pi_next ** 2 * self.squared_risk - pen) / self.scale_reward
         elif self.cost == "trade_l1":
             if self.noise:
-                reward = (
-                    (self.p + self.noise_array[self.it]) * pi_next
-                    - self.lambd * pi_next ** 2 * self.squared_risk
-                    - self.psi * abs(pi_next - self.pi)
-                    - pen
-                ) / self.scale_reward
-
+                reward = ((self.p + self.noise_array[self.it]) * pi_next
+                          - self.lambd * pi_next ** 2 * self.squared_risk
+                          - self.psi * abs(pi_next - self.pi)
+                          - pen) / self.scale_reward
             else:
-                reward = (
-                    self.p * pi_next
-                    - self.lambd * pi_next ** 2 * self.squared_risk
-                    - self.psi * abs(pi_next - self.pi)
-                    - pen
-                ) / self.scale_reward
-
+                reward = (self.p * pi_next
+                          - self.lambd * pi_next ** 2 * self.squared_risk
+                          - self.psi * abs(pi_next - self.pi)
+                          - pen) / self.scale_reward
         elif self.cost == "trade_l2":
             if self.noise:
-                reward = (
-                    (self.p + self.noise_array[self.it]) * pi_next
-                    - self.lambd * pi_next ** 2 * self.squared_risk
-                    - self.psi * (pi_next - self.pi) ** 2
-                    - pen
-                ) / self.scale_reward
-
+                reward = ((self.p + self.noise_array[self.it]) * pi_next
+                          - self.lambd * pi_next ** 2 * self.squared_risk
+                          - self.psi * (pi_next - self.pi) ** 2
+                          - pen) / self.scale_reward
             else:
-                reward = (
-                    self.p * pi_next
-                    - self.lambd * pi_next ** 2 * self.squared_risk
-                    - self.psi * (pi_next - self.pi) ** 2
-                    - pen
-                ) / self.scale_reward
+                reward = (self.p * pi_next
+                          - self.lambd * pi_next ** 2 * self.squared_risk
+                          - self.psi * (pi_next - self.pi) ** 2
+                          - pen) / self.scale_reward
 
+        # Aggiorna la posizione e il segnale
         self.pi = pi_next
         self.it += 1
         self.p = self.signal[self.it + 1]
-        self.state = (self.p, self.pi)
+        self.state = (self.p, self.pi)  # Stato "base" (per compatibilità)
         self.done = self.it == (len(self.signal) - 2)
         return reward
 
+    # I metodi test() e test_apply() li manteniamo invariati (non li riproduco qui per brevità)
+
+
     def test(
-        self, agent, model, total_episodes=10, random_states=None, noise_seeds=None
+        self, agent, model, total_episodes=100, random_states=None, noise_seeds=None
     ):
         """
         Description
