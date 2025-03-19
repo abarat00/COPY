@@ -11,7 +11,6 @@ def build_ou_process(T=100000, theta=0.1, sigma=0.1, random_state=None):
     ```
     (epsilon_t)_t are standard normal random variables
 
-
     Parameters:
     ---------------
     T : Int, length of the signal.
@@ -29,7 +28,6 @@ def build_ou_process(T=100000, theta=0.1, sigma=0.1, random_state=None):
     if random_state is not None:
         rng = np.random.RandomState(random_state)
         normals = rng.normal(0, 1, T)
-
     else:
         normals = np.random.normal(0, 1, T)
 
@@ -47,7 +45,7 @@ def get_returns(signal, random_state=None):
     Compute the returns r_t = p_t + eta_t, where p_t is the signal and eta_t is a Gaussian
     white noise.
 
-    Parameters
+    Parameters:
     ---------------
     signal : 1D np.array, the signal computed as a sample path of an OU process.
     random_state : Int or None:
@@ -55,14 +53,12 @@ def get_returns(signal, random_state=None):
           running the simulation).
         - if Int, use a random state (useful to compare different experimental results).
 
-    Returns
+    Returns:
     ---------------
-    1D np.array containing the returns
+    1D np.array containing the returns.
     """
-
     if random_state is not None:
         rng = np.random.RandomState(random_state)
         return signal + rng.normal(size=signal.size)
-
     else:
         return signal + np.random.normal(size=signal.size)
