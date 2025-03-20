@@ -28,8 +28,11 @@ class Environment:
         noise_std=10,
         noise_seed=None,
         scale_reward=10,
+        df=None,
+        max_step=100,
         norm_params_path=None,   # Percorso al file JSON con i parametri Min-Max
-        norm_columns=None        # Lista delle colonne (feature) da utilizzare, in ordine
+        norm_columns=None
+        # Lista delle colonne (feature) da utilizzare, in ordine
     ):
         self.sigma = sigma
         self.theta = theta
@@ -55,6 +58,18 @@ class Environment:
         self.noise = noise
         self.noise_std = noise_std
         self.noise_seed = noise_seed
+        self.df = df
+        self.current_index = 0
+        # Nuovi attributi per le commissioni di trading
+        self.free_trades_per_month = 10  # Numero di operazioni gratuite al mese
+        self.trade_count = 0  # Contatore delle operazioni effettuate
+        self.commission_rate = 0.0025  # 0.25% dell'importo dell'ordine
+        self.min_commission = 1.0  # Commissione minima di 1€
+        self.month_start_index = 0  # Indice di inizio del mese corrente
+        self.current_month = None  # Per tenere traccia del mese corrente
+        
+        if df is not None:
+            self.T = len(df) - 1 # La lunghezza massima sarà il dataframe
         if noise:
             if noise_seed is None:
                 self.noise_array = np.random.normal(0, noise_std, T)
@@ -107,25 +122,65 @@ class Environment:
             raise ValueError(f"Mancano le seguenti colonne nel DataFrame: {missing}")
         self.raw_state = row
 
-    def reset(self, random_state=None, noise_seed=None):
+    def reset(self, random_state=None, noise_seed=None, start_index=None):
         """
         Resetta l'ambiente per iniziare un nuovo episodio.
+        
+        Parametri:
+        - random_state: seme per la generazione del processo OU (se utilizzato)
+        - noise_seed: seme per il rumore (se utilizzato)
+        - start_index: indice iniziale nel DataFrame (se si usano dati reali)
+        
+        Returns:
+        - Vettore di stato iniziale
         """
+        # Reset del processo OU per compatibilità con il vecchio codice
         self.signal = build_ou_process(self.T, self.sigma, self.theta, random_state)
         self.it = 0
         self.pi = 0
-        self.p = self.signal[self.it + 1]
-        self.state = (self.p, self.pi)
+        
+        # Gestione dell'indice nei dati reali
+        if self.df is not None:
+            if start_index is not None:
+                # Se specificato un indice di partenza, usalo (con limite di sicurezza)
+                self.current_index = min(start_index, len(self.df) - self.max_step - 1)
+            else:
+                # Altrimenti possiamo partire da un punto casuale o dall'inizio
+                if random_state is not None:
+                    rng = np.random.RandomState(random_state)
+                    self.current_index = rng.randint(0, max(1, len(self.df) - self.max_step - 1))
+                else:
+                    self.current_index = 0
+            
+            # Aggiorna lo stato raw con i dati reali
+            self.update_raw_state(self.df, self.current_index)
+            
+            # Usa il prezzo di chiusura come segnale
+            if "Log_Close" in self.raw_state:
+                self.p = self.raw_state["Log_Close"]
+            elif "close" in self.raw_state:
+                self.p = self.raw_state["close"]
+            else:
+                # Fallback su un altro valore se necessario
+                self.p = 0.0
+        else:
+            # Usa il processo OU come segnale simulato
+            self.p = self.signal[self.it + 1]
+        
+        # Resetta la variabile di fine episodio
         self.done = False
+        
+        # Gestione del rumore (per compatibilità con il vecchio codice)
         if self.noise:
             if noise_seed is None:
                 self.noise_array = np.random.normal(0, self.noise_std, self.T)
             else:
                 rng = np.random.RandomState(noise_seed)
                 self.noise_array = rng.normal(0, self.noise_std, self.T)
-        # Aggiorna raw_state per il nuovo episodio
-        # Ad esempio, se hai un DataFrame normalizzato 'df' e un indice corrente '0':
-        # self.update_raw_state(df, current_index=0)
+        
+        # Aggiorna lo stato base per compatibilità
+        self.state = (self.p, self.pi)
+    
         return self.get_state()
 
     def update_raw_state(self, df, current_index):
@@ -163,68 +218,165 @@ class Environment:
 
     def step(self, action):
         """
-        Applica l'azione all'ambiente, aggiornando la posizione, il segnale e calcolando la ricompensa.
+        Applica un'azione nell'ambiente, avanza al timestep successivo e calcola la ricompensa.
 
-        Parameters:
-            action : Float, variazione della posizione (trade).
+        Parametri:
+        - action: azione da eseguire (cambio di posizione)
 
         Returns:
-            Float, la ricompensa ottenuta.
+        - Ricompensa ottenuta dall'azione
         """
         assert not self.done, "L'episodio è terminato. Resetta l'ambiente prima di procedere."
-        pi_next_unclipped = self.pi + action
+        
+        # Salva posizione e prezzo correnti
+        pi_prev = self.pi
+        current_price = self.p
+        
+        # Calcola la nuova posizione dopo l'azione
+        pi_next_unclipped = pi_prev + action
         if self.clip:
-            pi_next = np.clip(self.pi + action, -self.max_pos, self.max_pos)
+            pi_next = np.clip(pi_next_unclipped, -self.max_pos, self.max_pos)
         else:
-            pi_next = self.pi + action
-
-        # Calcola la penalità
+            pi_next = pi_next_unclipped
+        
+        # Calcola la penalità per le posizioni fuori limite
         if self.penalty == "none":
             pen = 0
         elif self.penalty == "constant":
             pen = self.alpha * max(
                 0,
-                (self.max_pos - pi_next) / abs(self.max_pos - pi_next),
-                (-self.max_pos - pi_next) / abs(-self.max_pos - pi_next),
+                (self.max_pos - pi_next) / abs(self.max_pos - pi_next) if self.max_pos != pi_next else 0,
+                (-self.max_pos - pi_next) / abs(-self.max_pos - pi_next) if -self.max_pos != pi_next else 0,
             )
         elif self.penalty == "tanh":
             pen = self.beta * (np.tanh(self.alpha * (abs(pi_next_unclipped) - 5 * self.max_pos / 4)) + 1)
         elif self.penalty == "exp":
             pen = self.beta * np.exp(self.alpha * (abs(pi_next) - self.max_pos))
-
-        # Calcola la ricompensa in base al modello di costo
-        if self.cost == "trade_0":
-            reward = (self.p * pi_next - self.lambd * pi_next ** 2 * self.squared_risk - pen) / self.scale_reward
-        elif self.cost == "trade_l1":
-            if self.noise:
-                reward = ((self.p + self.noise_array[self.it]) * pi_next
-                          - self.lambd * pi_next ** 2 * self.squared_risk
-                          - self.psi * abs(pi_next - self.pi)
-                          - pen) / self.scale_reward
-            else:
-                reward = (self.p * pi_next
-                          - self.lambd * pi_next ** 2 * self.squared_risk
-                          - self.psi * abs(pi_next - self.pi)
-                          - pen) / self.scale_reward
-        elif self.cost == "trade_l2":
-            if self.noise:
-                reward = ((self.p + self.noise_array[self.it]) * pi_next
-                          - self.lambd * pi_next ** 2 * self.squared_risk
-                          - self.psi * (pi_next - self.pi) ** 2
-                          - pen) / self.scale_reward
-            else:
-                reward = (self.p * pi_next
-                          - self.lambd * pi_next ** 2 * self.squared_risk
-                          - self.psi * (pi_next - self.pi) ** 2
-                          - pen) / self.scale_reward
-
-        # Aggiorna la posizione e il segnale
+        
+        # Aggiorna la posizione
         self.pi = pi_next
-        self.it += 1
-        self.p = self.signal[self.it + 1]
-        self.state = (self.p, self.pi)  # Stato "base" (per compatibilità)
-        self.done = self.it == (len(self.signal) - 2)
+        
+        # Gestione dei dati temporali e calcolo della ricompensa
+        if self.df is not None:
+            # Avanza al prossimo timestep nel DataFrame
+            self.current_index += 1
+            
+            # Controlla se siamo arrivati alla fine del dataset
+            if self.current_index >= len(self.df) - 1:
+                self.done = True
+                # Ricompensa finale (potrebbe essere personalizzata)
+                return 0
+            
+            # Aggiorna lo stato con i nuovi dati
+            self.update_raw_state(self.df, self.current_index)
+            
+            # Gestione del cambio mese e conteggio delle operazioni
+        if 'date' in self.df.columns:
+            current_date_str = self.df['date'].iloc[self.current_index]
+            
+            # Converti da stringa a datetime se necessario
+            if isinstance(current_date_str, str):
+                from datetime import datetime
+                current_date = datetime.strptime(current_date_str, '%Y-%m-%d')
+            else:
+                # Assume che sia già un datetime
+                current_date = current_date_str
+            
+            current_month = (current_date.year, current_date.month)
+            
+            # Reset contatore operazioni se cambia il mese
+            if current_month != self.current_month:
+                self.current_month = current_month
+                self.trade_count = 0
+        
+            
+            # Ottieni il nuovo prezzo e calcola il rendimento
+            if "Log_Close" in self.raw_state:
+                next_price = self.raw_state["Log_Close"]
+                price_return = next_price - current_price  # Rendimento logaritmico
+            elif "close" in self.raw_state:
+                next_price = self.raw_state["close"]
+                if current_price != 0:
+                    price_return = (next_price / current_price) - 1  # Rendimento percentuale
+                else:
+                    price_return = 0
+            else:
+                # Usa una colonna alternativa se necessario
+                next_price = current_price + self.raw_state.get("change", 0.0)
+                price_return = self.raw_state.get("change", 0.0)
+            
+            # Aggiorna il prezzo corrente
+            self.p = next_price
+            
+            # Calcolo della nuova ricompensa basata sui dati reali
+            
+            # 1. Profitto/Perdita dalla posizione
+            pnl = pi_prev * price_return
+            
+            # 2. Calcolo dei costi di trading con commissioni realistiche
+            if abs(action) > 1e-6:  # Se c'è un'operazione effettiva
+                self.trade_count += 1
+                
+                if self.trade_count <= self.free_trades_per_month:
+                    # Operazione gratuita
+                    trading_cost = 0
+                else:
+                    # Calcola il valore dell'ordine (stima basata sul cambio di posizione)
+                    order_value = abs(action) * current_price
+                    
+                    # Calcola commissione come percentuale dell'importo
+                    percentage_commission = order_value * self.commission_rate
+                    
+                    # Applica la commissione maggiore tra quella percentuale e quella minima
+                    trading_cost = max(percentage_commission, self.min_commission)
+            else:
+                # Nessuna operazione, nessun costo
+                trading_cost = 0
+            
+            # 3. Penalità per dimensione della posizione (controllo del rischio)
+            position_penalty = self.lambd * pi_next ** 2 * self.squared_risk
+            
+            # 4. Calcolo della ricompensa complessiva
+            reward = (pnl - trading_cost - position_penalty - pen) / self.scale_reward
+            
+        else:
+            # Usa il vecchio sistema con processo OU simulato
+            # [Il resto del codice rimane invariato]
+            self.it += 1
+            self.p = self.signal[self.it + 1]
+            self.done = self.it == (len(self.signal) - 2)
+            
+            # Vecchio calcolo della ricompensa per compatibilità
+            if self.cost == "trade_0":
+                reward = (self.p * pi_next - self.lambd * pi_next ** 2 * self.squared_risk - pen) / self.scale_reward
+            elif self.cost == "trade_l1":
+                if self.noise:
+                    reward = ((self.p + self.noise_array[self.it]) * pi_next
+                            - self.lambd * pi_next ** 2 * self.squared_risk
+                            - self.psi * abs(pi_next - pi_prev)
+                            - pen) / self.scale_reward
+                else:
+                    reward = (self.p * pi_next
+                            - self.lambd * pi_next ** 2 * self.squared_risk
+                            - self.psi * abs(pi_next - pi_prev)
+                            - pen) / self.scale_reward
+            elif self.cost == "trade_l2":
+                if self.noise:
+                    reward = ((self.p + self.noise_array[self.it]) * pi_next
+                            - self.lambd * pi_next ** 2 * self.squared_risk
+                            - self.psi * (pi_next - pi_prev) ** 2
+                            - pen) / self.scale_reward
+                else:
+                    reward = (self.p * pi_next
+                            - self.lambd * pi_next ** 2 * self.squared_risk
+                            - self.psi * (pi_next - pi_prev) ** 2
+                            - pen) / self.scale_reward
+        
+        # Aggiorna lo stato base per compatibilità
+        self.state = (self.p, self.pi)
+
         return reward
+                       
 
     # I metodi test() e test_apply() li manteniamo invariati (non li riproduco qui per brevità)
 
