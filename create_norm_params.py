@@ -14,7 +14,7 @@ output_dir = '/Users/Alessandro/Desktop/DRL/NAS Results/Multi_Ticker/Normalized_
 os.makedirs(output_dir, exist_ok=True)
 
 # Cerca tutti i file CSV che seguono il pattern: ogni sottocartella contiene un file *_rl_input.csv
-csv_files = glob.glob(os.path.join(input_dir, '*', '*_rl_input.csv'))
+csv_files = glob.glob(os.path.join(input_dir, '*', '*_complete_rl_input.csv'))
 print(f"Trovati {len(csv_files)} file CSV.")
 
 for csv_path in tqdm(csv_files, desc="Normalizzazione file CSV"):
