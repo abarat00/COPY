@@ -84,39 +84,44 @@ max_steps = min(1000, len(df_train) - 10)  # Limita la lunghezza massima dell'ep
 print(f"Lunghezza massima episodio: {max_steps} timestep")
 
 # Inizializza l'ambiente
+# Inizializza l'ambiente con i dati di test
 env = Environment(
-    sigma=0.1,            # Per compatibilità con il vecchio codice
-    theta=0.1,            # Per compatibilità con il vecchio codice
-    T=len(df_train) - 1,  # Usa lunghezza del dataset di training
-    lambd=0.3,            # Peso penalità posizione
-    psi=0.5,              # Peso costi di trading
-    cost="trade_l1",      # Modello di costo
-    max_pos=2,            # Posizione massima
-    squared_risk=False,   # Usa rischio quadratico
-    penalty="tanh",       # Tipo di penalità
-    alpha=10,             # Parametro penalità
-    beta=10,              # Parametro penalità
-    clip=True,            # Limita le posizioni
-    scale_reward=10,      # Scala per le ricompense
-    df=df_train,          # Usa il dataset di training
+    sigma=0.1,
+    theta=0.1,
+    T=len(df_test) - 1,
+    lambd=0.05,            # Utilizziamo il valore ridotto come nel training
+    psi=0.2,               # Utilizziamo il valore ridotto come nel training
+    cost="trade_l1",
+    max_pos=4,             # Utilizziamo il valore aumentato come nel training
+    squared_risk=False,
+    penalty="tanh",
+    alpha=3,               # Utilizziamo il valore ridotto come nel training
+    beta=3,                # Utilizziamo il valore ridotto come nel training
+    clip=True,
+    scale_reward=5,        # Utilizziamo il valore ridotto come nel training
+    df=df_test,            # Usa i dati di test
     norm_params_path=norm_params_path,
     norm_columns=norm_columns,
-    max_step=max_steps    # Lunghezza massima episodio
+    max_step=len(df_test), # Usa tutto il dataset di test
+    # Ripristina i parametri realistici di commissioni per il test
+    free_trades_per_month=10,       # Torna al valore realistico
+    commission_rate=0.0025,         # Torna al valore realistico
+    min_commission=1.0               # Torna al valore realistico
 )
 
 # Parametri di training
-total_episodes = 100      # Numero di episodi
-learn_freq = 50           # Frequenza di apprendimento
+total_episodes = 200      # AUMENTATO ULTERIORMENTE: Numero di episodi (150 -> 200)
+learn_freq = 20           # RIDOTTO ULTERIORMENTE: Frequenza di apprendimento (25 -> 20)
 save_freq = 10            # Frequenza di salvataggio dei modelli
 
 # Inizializza l'agente
 print("Inizializzazione dell'agente DDPG...")
 agent = Agent(
     memory_type="prioritized",
-    batch_size=64,
+    batch_size=256,         # AUMENTATO ULTERIORMENTE: Dimensione batch (128 -> 256)
     max_step=max_steps,
-    theta=0.1,            # Parametro rumore OU
-    sigma=0.1             # Parametro rumore OU
+    theta=0.1,              # MODIFICATO: Parametro rumore OU (0.15 -> 0.1)
+    sigma=0.3               # AUMENTATO ULTERIORMENTE: Parametro rumore OU (0.2 -> 0.3)
 )
 
 # Avvia il training
@@ -124,23 +129,24 @@ print(f"Avvio del training per {ticker} - {total_episodes} episodi...")
 agent.train(
     env=env,
     total_episodes=total_episodes,
-    tau_actor=0.1,
-    tau_critic=0.01,
-    lr_actor=1e-4,
-    lr_critic=1e-3,
-    weight_decay_actor=0,
-    weight_decay_critic=1e-4,
-    total_steps=1000,
+    tau_actor=0.01,          # RIDOTTO ULTERIORMENTE: Tasso di update soft dell'actor (0.05 -> 0.01)
+    tau_critic=0.05,         # AUMENTATO ULTERIORMENTE: Tasso di update soft del critic (0.02 -> 0.05)
+    lr_actor=1e-5,           # RIDOTTO ULTERIORMENTE: Learning rate dell'actor (5e-5 -> 1e-5)
+    lr_critic=2e-4,          # RIDOTTO ULTERIORMENTE: Learning rate del critic (5e-4 -> 2e-4)
+    weight_decay_actor=1e-6, # RIDOTTO: Regolarizzazione L2 per l'actor (1e-5 -> 1e-6)
+    weight_decay_critic=2e-5, # RIDOTTO: Regolarizzazione L2 per il critic (1e-4 -> 2e-5)
+    total_steps=2000,        # AUMENTATO ULTERIORMENTE: Passi di pretraining (1500 -> 2000)
     weights=f'{output_dir}/weights/',
     freq=save_freq,
-    fc1_units_actor=128,
-    fc2_units_actor=64,
-    fc1_units_critic=256,
-    fc2_units_critic=128,
+    fc1_units_actor=128,     # Mantenuto: Nodi primo layer actor
+    fc2_units_actor=64,      # Mantenuto: Nodi secondo layer actor
+    fc1_units_critic=256,    # Mantenuto: Nodi primo layer critic
+    fc2_units_critic=128,    # Mantenuto: Nodi secondo layer critic
     learn_freq=learn_freq,
-    decay_rate=1e-5,
+    decay_rate=1e-6,         # RIDOTTO ULTERIORMENTE: Decay rate per esplorazione (5e-6 -> 1e-6)
+    explore_stop=0.1,        # AUMENTATO ULTERIORMENTE: Probabilità minima di esplorazione (0.05 -> 0.1)
     tensordir=f'{output_dir}/runs/',
-    progress="tqdm",  # Mostra barra di avanzamento
+    progress="tqdm",         # Mostra barra di avanzamento
 )
 
 print(f"Training completato per {ticker}!")

@@ -9,124 +9,123 @@ class Environment:
     riordinate secondo l'ordine definito in self.norm_columns, concatenate con la
     posizione corrente (pi). Il segnale viene generato tramite un processo di Ornstein-Uhlenbeck.
     """
-    def __init__(
-        self,
-        sigma=0.5,
-        theta=1.0,
-        T=1000,
-        random_state=None,
-        lambd=0.5,
-        psi=0.5,
-        cost="trade_0",
-        max_pos=10,
-        squared_risk=True,
-        penalty="none",
-        alpha=10,
-        beta=10,
-        clip=True,
-        noise=False,
-        noise_std=10,
-        noise_seed=None,
-        scale_reward=10,
-        df=None,
-        max_step=100,
-        norm_params_path=None,   # Percorso al file JSON con i parametri Min-Max
-        norm_columns=None,       # Lista delle colonne (feature) da utilizzare, in ordine
-        free_trades_per_month=10,  # Numero di operazioni gratuite al mese
-        commission_rate=0.0025,    # Commissione percentuale (0.25%)
-        min_commission=1.0,        # Commissione minima
-        trading_frequency_penalty_factor=0.0,  # Fattore di penalità per trading frequente
-        position_stability_bonus_factor=0.0,    # Fattore di bonus per stabilità posizione
-        initial_capital=10000
-    ):
-        self.sigma = sigma
-        self.theta = theta
-        self.T = T
-        self.lambd = lambd
-        self.psi = psi
-        self.cost = cost
-        self.max_pos = max_pos
-        self.squared_risk = squared_risk
-        self.random_state = random_state
-        self.signal = build_ou_process(T, sigma, theta, random_state)
-        self.it = 0
-        self.pi = 0
-        self.p = self.signal[self.it + 1]
-        self.state = (self.p, self.pi)  # Stato "base" (vecchio formato)
-        self.done = False
-        self.action_size = 1
-        self.penalty = penalty
-        self.alpha = alpha
-        self.beta = beta
-        self.clip = clip
-        self.scale_reward = scale_reward
-        self.noise = noise
-        self.noise_std = noise_std
-        self.noise_seed = noise_seed
-        self.df = df
-        self.current_index = 0
-        # Parametri per le commissioni di trading
-        self.free_trades_per_month = free_trades_per_month
-        self.trade_count = 0  # Contatore delle operazioni effettuate
-        self.commission_rate = commission_rate
-        self.min_commission = min_commission
-        self.month_start_index = 0  # Indice di inizio del mese corrente
-        self.current_month = None  # Per tenere traccia del mese corrente
-        
-        # Nuovi parametri per controllare il comportamento di trading
-        self.trading_frequency_penalty_factor = trading_frequency_penalty_factor
-        self.position_stability_bonus_factor = position_stability_bonus_factor
+    # Aggiornamento al metodo __init__ della classe Environment
 
-        # Nuovi attributi per il tracking del portafoglio
-        self.initial_capital = initial_capital
-        self.cash = initial_capital
-        
-        # Inizializzazione delle liste per tracciare lo storico
-        self.position_history = []
-        self.action_history = []
-        
-        if df is not None:
-            self.T = len(df) - 1 # La lunghezza massima sarà il dataframe
-        if noise:
-            if noise_seed is None:
-                self.noise_array = np.random.normal(0, noise_std, T)
-            else:
-                rng = np.random.RandomState(noise_seed)
-                self.noise_array = rng.normal(0, noise_std, T)
+# Aggiornamento al metodo __init__ della classe Environment
 
-        # Carica i parametri di normalizzazione, se fornito
-        if norm_params_path is not None:
-            with open(norm_params_path, 'r') as f:
-                self.norm_params = json.load(f)
+def __init__(
+    self,
+    sigma=0.5,
+    theta=1.0,
+    T=1000,
+    random_state=None,
+    lambd=0.5,
+    psi=0.5,
+    cost="trade_0",
+    max_pos=10,
+    squared_risk=True,
+    penalty="none",
+    alpha=10,
+    beta=10,
+    clip=True,
+    noise=False,
+    noise_std=10,
+    noise_seed=None,
+    scale_reward=10,
+    df=None,
+    max_step=100,
+    norm_params_path=None,   # Percorso al file JSON con i parametri Min-Max
+    norm_columns=None,       # Lista delle colonne (feature) da utilizzare, in ordine
+    free_trades_per_month=10,  # Numero di operazioni gratuite al mese
+    commission_rate=0.0025,    # Commissione percentuale (0.25%)
+    min_commission=1.0,        # Commissione minima
+    trading_frequency_penalty_factor=0.0,  # Fattore di penalità per trading frequente
+    position_stability_bonus_factor=0.0    # Fattore di bonus per stabilità posizione
+):
+    self.sigma = sigma
+    self.theta = theta
+    self.T = T
+    self.lambd = lambd
+    self.psi = psi
+    self.cost = cost
+    self.max_pos = max_pos
+    self.squared_risk = squared_risk
+    self.random_state = random_state
+    self.signal = build_ou_process(T, sigma, theta, random_state)
+    self.it = 0
+    self.pi = 0
+    self.p = self.signal[self.it + 1]
+    self.state = (self.p, self.pi)  # Stato "base" (vecchio formato)
+    self.done = False
+    self.action_size = 1
+    self.penalty = penalty
+    self.alpha = alpha
+    self.beta = beta
+    self.clip = clip
+    self.scale_reward = scale_reward
+    self.noise = noise
+    self.noise_std = noise_std
+    self.noise_seed = noise_seed
+    self.df = df
+    self.current_index = 0
+    # Parametri per le commissioni di trading
+    self.free_trades_per_month = free_trades_per_month
+    self.trade_count = 0  # Contatore delle operazioni effettuate
+    self.commission_rate = commission_rate
+    self.min_commission = min_commission
+    self.month_start_index = 0  # Indice di inizio del mese corrente
+    self.current_month = None  # Per tenere traccia del mese corrente
+    
+    # Nuovi parametri per controllare il comportamento di trading
+    self.trading_frequency_penalty_factor = trading_frequency_penalty_factor
+    self.position_stability_bonus_factor = position_stability_bonus_factor
+    
+    # Inizializzazione delle liste per tracciare lo storico
+    self.position_history = []
+    self.action_history = []
+    
+    if df is not None:
+        self.T = len(df) - 1 # La lunghezza massima sarà il dataframe
+    if noise:
+        if noise_seed is None:
+            self.noise_array = np.random.normal(0, noise_std, T)
         else:
-            self.norm_params = None
+            rng = np.random.RandomState(noise_seed)
+            self.noise_array = rng.normal(0, noise_std, T)
 
-        # Definisci l'ordine esatto delle feature da utilizzare.
-        if norm_columns is not None:
-            self.norm_columns = norm_columns
-        else:
-            # Esempio: le 64 feature da utilizzare
-            self.norm_columns = [
-                "open", "volume", "change", "day", "week", "adjCloseGold", "adjCloseSpy",
-                "Credit_Spread", "Log_Close", "m_plus", "m_minus", "drawdown", "drawup",
-                "s_plus", "s_minus", "upper_bound", "lower_bound", "avg_duration", "avg_depth",
-                "cdar_95", "VIX_Close", "MACD", "MACD_Signal", "MACD_Histogram", "SMA5",
-                "SMA10", "SMA15", "SMA20", "SMA25", "SMA30", "SMA36", "RSI5", "RSI14", "RSI20",
-                "RSI25", "ADX5", "ADX10", "ADX15", "ADX20", "ADX25", "ADX30", "ADX35",
-                "BollingerLower", "BollingerUpper", "WR5", "WR14", "WR20", "WR25",
-                "SMA5_SMA20", "SMA5_SMA36", "SMA20_SMA36", "SMA5_Above_SMA20",
-                "Golden_Cross", "Death_Cross", "BB_Position", "BB_Width",
-                "BB_Upper_Distance", "BB_Lower_Distance", "Volume_SMA20", "Volume_Change_Pct",
-                "Volume_1d_Change_Pct", "Volume_Spike", "Volume_Collapse", "GARCH_Vol",
-                "pred_lstm", "pred_gru", "pred_blstm", "pred_lstm_direction",
-                "pred_gru_direction", "pred_blstm_direction"
-            ]
-        # La dimensione dello stato è il numero di feature + 1 (per la posizione)
-        self.state_size = len(self.norm_columns) + 1
+    # Carica i parametri di normalizzazione, se fornito
+    if norm_params_path is not None:
+        with open(norm_params_path, 'r') as f:
+            self.norm_params = json.load(f)
+    else:
+        self.norm_params = None
 
-        # Inizializza raw_state come dizionario con chiavi definite da norm_columns.
-        # Questo verrà aggiornato ad ogni step con i dati correnti (già normalizzati)
-        self.raw_state = {col: 0.0 for col in self.norm_columns}
+    # Definisci l'ordine esatto delle feature da utilizzare.
+    if norm_columns is not None:
+        self.norm_columns = norm_columns
+    else:
+        # Esempio: le 64 feature da utilizzare
+        self.norm_columns = [
+            "open", "volume", "change", "day", "week", "adjCloseGold", "adjCloseSpy",
+            "Credit_Spread", "Log_Close", "m_plus", "m_minus", "drawdown", "drawup",
+            "s_plus", "s_minus", "upper_bound", "lower_bound", "avg_duration", "avg_depth",
+            "cdar_95", "VIX_Close", "MACD", "MACD_Signal", "MACD_Histogram", "SMA5",
+            "SMA10", "SMA15", "SMA20", "SMA25", "SMA30", "SMA36", "RSI5", "RSI14", "RSI20",
+            "RSI25", "ADX5", "ADX10", "ADX15", "ADX20", "ADX25", "ADX30", "ADX35",
+            "BollingerLower", "BollingerUpper", "WR5", "WR14", "WR20", "WR25",
+            "SMA5_SMA20", "SMA5_SMA36", "SMA20_SMA36", "SMA5_Above_SMA20",
+            "Golden_Cross", "Death_Cross", "BB_Position", "BB_Width",
+            "BB_Upper_Distance", "BB_Lower_Distance", "Volume_SMA20", "Volume_Change_Pct",
+            "Volume_1d_Change_Pct", "Volume_Spike", "Volume_Collapse", "GARCH_Vol",
+            "pred_lstm", "pred_gru", "pred_blstm", "pred_lstm_direction",
+            "pred_gru_direction", "pred_blstm_direction"
+        ]
+    # La dimensione dello stato è il numero di feature + 1 (per la posizione)
+    self.state_size = len(self.norm_columns) + 1
+
+    # Inizializza raw_state come dizionario con chiavi definite da norm_columns.
+    # Questo verrà aggiornato ad ogni step con i dati correnti (già normalizzati)
+    self.raw_state = {col: 0.0 for col in self.norm_columns}
 
     def update_raw_state(self, df, current_index):
         """
@@ -155,8 +154,6 @@ class Environment:
         self.signal = build_ou_process(self.T, self.sigma, self.theta, random_state)
         self.it = 0
         self.pi = 0
-        self.cash = self.initial_capital  # Reset del cash
-
         
         # Gestione dell'indice nei dati reali
         if self.df is not None:
@@ -186,10 +183,6 @@ class Environment:
             # Usa il processo OU come segnale simulato
             self.p = self.signal[self.it + 1]
         
-        # Reset delle variabili di tracking
-        self.position_history = []
-        self.action_history = []
-        
         # Resetta la variabile di fine episodio
         self.done = False
         
@@ -206,10 +199,26 @@ class Environment:
     
         return self.get_state()
 
+    def update_raw_state(self, df, current_index):
+        """
+        Aggiorna self.raw_state leggendo la riga corrente (current_index) dal DataFrame df.
+        Il DataFrame df deve contenere le colonne indicate in self.norm_columns.
+        """
+        # Estrae la riga come dizionario; questo garantisce che l'ordine non importi
+        row = df.iloc[current_index].to_dict()
+        # Verifica che tutte le colonne attese siano presenti
+        missing = [col for col in self.norm_columns if col not in row]
+        if missing:
+            raise ValueError(f"Mancano le seguenti colonne nel DataFrame: {missing}")
+        self.raw_state = row
+
     def get_state(self):
         """
         Restituisce lo stato corrente come un vettore ottenuto concatenando le feature
         (estratte da self.raw_state in base a self.norm_columns) e la posizione corrente (pi).
+
+        Questo metodo riordina automaticamente le feature secondo self.norm_columns,
+        garantendo che il vettore di stato sia conforme a quello che il modello si aspetta.
 
         Ritorna:
             Un array NumPy di dimensione (state_size,).
@@ -222,6 +231,12 @@ class Environment:
         ordered_features = [self.raw_state[col] for col in self.norm_columns]
         ordered_features.append(self.pi)
         return np.array(ordered_features)
+
+    # Modifica alla funzione step() nella classe Environment
+
+# Modifica alla funzione step() nella classe Environment
+
+    # Modifica alla funzione step() nella classe Environment
 
     def step(self, action):
         """
@@ -260,17 +275,17 @@ class Environment:
         elif self.penalty == "exp":
             pen = self.beta * np.exp(self.alpha * (abs(pi_next) - self.max_pos))
         
-        # Traccia lo storico delle posizioni per calcolare la stabilità
+        # NUOVO: Traccia lo storico delle posizioni per calcolare la stabilità
         if not hasattr(self, 'position_history'):
             self.position_history = []
         self.position_history.append(pi_prev)
         
-        # Traccia lo storico delle azioni per calcolare la frequenza di trading
+        # NUOVO: Traccia lo storico delle azioni per calcolare la frequenza di trading
         if not hasattr(self, 'action_history'):
             self.action_history = []
         self.action_history.append(action)
         
-        # Calcola la penalità per il trading frequente
+        # NUOVO: Calcola la penalità per il trading frequente
         # Più trading recente = penalità maggiore
         trading_frequency_penalty = 0
         if hasattr(self, 'trading_frequency_penalty_factor') and self.trading_frequency_penalty_factor > 0:
@@ -282,7 +297,7 @@ class Environment:
             # Calcola la penalità in base alla frequenza di trading
             trading_frequency_penalty = self.trading_frequency_penalty_factor * (significant_actions / len(recent_actions))
         
-        # Calcola il bonus per la stabilità della posizione
+        # NUOVO: Calcola il bonus per la stabilità della posizione
         stability_bonus = 0
         if hasattr(self, 'position_stability_bonus_factor') and self.position_stability_bonus_factor > 0:
             # Se l'azione è piccola, diamo un bonus (premiamo il non-trading)
@@ -365,18 +380,11 @@ class Environment:
             else:
                 # Nessuna operazione, nessun costo
                 trading_cost = 0
-
-            # Calcola il delta della posizione (numero di azioni acquistate/vendute)
-            trade_delta = pi_next - pi_prev
-
-            # Aggiorna il cash: se trade_delta è positivo significa acquisto (cash diminuisce),
-            # se negativo significa vendita (cash aumenta, perché - (negativo * price) è positivo)
-            self.cash -= (trade_delta * current_price) + trading_cost
-                        
+            
             # 3. Penalità per dimensione della posizione (controllo del rischio)
             position_penalty = self.lambd * pi_next ** 2 * self.squared_risk
             
-            # 4. Calcolo della ricompensa per allineamento con il trend
+            # 4. NUOVO: Calcolo della ricompensa per allineamento con il trend
             trend_reward = 0
             # Utilizziamo le predizioni delle reti neurali se disponibili
             if all(k in self.raw_state for k in ["pred_lstm_direction", "pred_gru_direction", "pred_blstm_direction"]):
@@ -437,14 +445,11 @@ class Environment:
         self.state = (self.p, self.pi)
 
         return reward
-    def get_portfolio_value(self):
-        """
-        Restituisce il valore totale del portafoglio:
-        cash residuo + (numero di azioni possedute * prezzo corrente).
-        """
-        return self.cash + self.pi * self.p
-    
-    # I metodi test() e test_apply() che erano presenti nell'originale li manteniamo
+                       
+
+    # I metodi test() e test_apply() li manteniamo invariati (non li riproduco qui per brevità)
+
+
     def test(
         self, agent, model, total_episodes=100, random_states=None, noise_seeds=None
     ):

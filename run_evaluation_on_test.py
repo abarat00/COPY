@@ -131,24 +131,29 @@ def evaluate_model(model_path, env, agent):
     }
 
 # Inizializza l'ambiente con i dati di test
+# Inizializza l'ambiente con i dati di test
 env = Environment(
     sigma=0.1,
     theta=0.1,
     T=len(df_test) - 1,
-    lambd=0.3,
-    psi=0.5,
+    lambd=0.05,            # Utilizziamo il valore ridotto come nel training
+    psi=0.2,               # Utilizziamo il valore ridotto come nel training
     cost="trade_l1",
-    max_pos=2,
+    max_pos=4,             # Utilizziamo il valore aumentato come nel training
     squared_risk=False,
     penalty="tanh",
-    alpha=10,
-    beta=10,
+    alpha=3,               # Utilizziamo il valore ridotto come nel training
+    beta=3,                # Utilizziamo il valore ridotto come nel training
     clip=True,
-    scale_reward=10,
-    df=df_test,  # Usa i dati di test
+    scale_reward=5,        # Utilizziamo il valore ridotto come nel training
+    df=df_test,            # Usa i dati di test
     norm_params_path=norm_params_path,
     norm_columns=norm_columns,
-    max_step=len(df_test)  # Usa tutto il dataset di test
+    max_step=len(df_test), # Usa tutto il dataset di test
+    # Ripristina i parametri realistici di commissioni per il test
+    free_trades_per_month=10,       # Torna al valore realistico
+    commission_rate=0.0025,         # Torna al valore realistico
+    min_commission=1.0               # Torna al valore realistico
 )
 
 # Inizializza l'agente
